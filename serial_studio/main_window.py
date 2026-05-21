@@ -27,6 +27,7 @@ from .parser import parse_line
 from .serial_thread import SerialReader, available_ports
 
 MAX_SAMPLES = 2000
+DEMO_INTERVAL_MS = 30  # ~33 fps
 
 
 class MainWindow(QMainWindow):
@@ -47,6 +48,11 @@ class MainWindow(QMainWindow):
         self._ch_names: list[str] = []
 
         self._sample_count = 0
+        self._demo_t = 0.0
+        self._is_demo = False
+        self._demo_timer = QTimer()
+        self._demo_timer.timeout.connect(self._demo_tick)
+
         self._setup_ui()
         self._refresh_ports()
 
@@ -107,6 +113,12 @@ class MainWindow(QMainWindow):
         self._clear_btn = QPushButton("Clear")
         self._clear_btn.clicked.connect(self._clear_data)
         left_layout.addWidget(self._clear_btn)
+
+        left_layout.addSpacing(12)
+
+        self._demo_btn = QPushButton("Start Demo")
+        self._demo_btn.clicked.connect(self._toggle_demo)
+        left_layout.addWidget(self._demo_btn)
 
         # --- Right panel: plot ---
         self._plot = pg.PlotWidget()
@@ -245,6 +257,40 @@ class MainWindow(QMainWindow):
                 f.write(",".join(row) + "\n")
 
         self._status_label.setText(f"Exported {n} rows to {Path(path).name}")
+
+    # ── Demo mode ───────────────────────────────────────────
+    def _toggle_demo(self):
+        if self._is_demo:
+            self._demo_timer.stop()
+            self._is_demo = False
+            self._demo_btn.setText("Start Demo")
+            self._port_combo.setEnabled(True)
+            self._baud_combo.setEnabled(True)
+            self._connect_btn.setEnabled(True)
+            self._status_label.setText("Demo stopped")
+            return
+
+        self._clear_data()
+        self._demo_t = 0.0
+        self._is_demo = True
+        self._demo_btn.setText("Stop Demo")
+        self._port_combo.setEnabled(False)
+        self._baud_combo.setEnabled(False)
+        self._connect_btn.setEnabled(False)
+        self._status_label.setText("Demo running")
+        self._demo_timer.start(DEMO_INTERVAL_MS)
+
+    def _demo_tick(self):
+        """Generate 3-channel sine wave data."""
+        import math
+        t = self._demo_t
+        ch1 = 50 + 40 * math.sin(t * 0.05)
+        ch2 = 30 + 25 * math.cos(t * 0.07 + 1.2)
+        ch3 = 20 * math.sin(t * 0.13) * math.cos(t * 0.03)
+        self._demo_t += 1
+
+        line = f"{ch1:.1f}, {ch2:.1f}, {ch3:.2f}"
+        self._on_data(line)
 
 
 def launch():
